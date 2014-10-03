@@ -25,11 +25,13 @@ import org.slf4j.LoggerFactory;
  * @author Neil Boyd
  *
  */
-public class TileWriter implements IFilesystemCache, OpenStreetMapTileProviderConstants {
+public class TileWriter implements IFilesystemCache {
 
 	// ===========================================================
 	// Constants
 	// ===========================================================
+
+    static OpenStreetMapTileProviderConstants constants = OpenStreetMapTileProviderConstants.getInstance();
 
 	private static final Logger logger = LoggerFactory.getLogger(TileWriter.class);
 
@@ -51,11 +53,11 @@ public class TileWriter implements IFilesystemCache, OpenStreetMapTileProviderCo
 			@Override
 			public void run() {
 				mUsedCacheSpace = 0; // because it's static
-				calculateDirectorySize(TILE_PATH_BASE);
-				if (mUsedCacheSpace > TILE_MAX_CACHE_SIZE_BYTES) {
+				calculateDirectorySize(constants.TILE_PATH_BASE());
+				if (mUsedCacheSpace > constants.TILE_MAX_CACHE_SIZE_BYTES) {
 					cutCurrentCache();
 				}
-				if (DEBUGMODE) {
+                if (constants.DEBUGMODE) {
 					logger.debug("Finished init thread");
 				}
 			}
@@ -86,8 +88,8 @@ public class TileWriter implements IFilesystemCache, OpenStreetMapTileProviderCo
 	public boolean saveFile(final ITileSource pTileSource, final MapTile pTile,
 			final InputStream pStream) {
 
-		final File file = new File(TILE_PATH_BASE, pTileSource.getTileRelativeFilenameString(pTile)
-				+ TILE_PATH_EXTENSION);
+		final File file = new File(constants.TILE_PATH_BASE(), pTileSource.getTileRelativeFilenameString(pTile)
+				+ constants.TILE_PATH_EXTENSION);
 
 		final File parent = file.getParentFile();
 		if (!parent.exists() && !createFolderAndCheckIfExists(parent)) {
@@ -101,7 +103,7 @@ public class TileWriter implements IFilesystemCache, OpenStreetMapTileProviderCo
 			final long length = StreamUtils.copy(pStream, outputStream);
 
 			mUsedCacheSpace += length;
-			if (mUsedCacheSpace > TILE_MAX_CACHE_SIZE_BYTES) {
+			if (mUsedCacheSpace > constants.TILE_MAX_CACHE_SIZE_BYTES) {
 				cutCurrentCache(); // TODO perhaps we should do this in the background
 			}
 		} catch (final IOException e) {
@@ -122,7 +124,7 @@ public class TileWriter implements IFilesystemCache, OpenStreetMapTileProviderCo
 		if (pFile.mkdirs()) {
 			return true;
 		}
-		if (DEBUGMODE) {
+        if (constants.DEBUGMODE) {
 			logger.debug("Failed to create " + pFile + " - wait and check again");
 		}
 
@@ -133,12 +135,12 @@ public class TileWriter implements IFilesystemCache, OpenStreetMapTileProviderCo
 		}
 		// and then check again
 		if (pFile.exists()) {
-			if (DEBUGMODE) {
+            if (constants.DEBUGMODE) {
 				logger.debug("Seems like another thread created " + pFile);
 			}
 			return true;
 		} else {
-			if (DEBUGMODE) {
+			if (constants.DEBUGMODE) {
 				logger.debug("File still doesn't exist: " + pFile);
 			}
 			return false;
@@ -204,40 +206,36 @@ public class TileWriter implements IFilesystemCache, OpenStreetMapTileProviderCo
 	 * If the cache size is greater than the max then trim it down to the trim level. This method is
 	 * synchronized so that only one thread can run it at a time.
 	 */
-	private void cutCurrentCache() {
+    private void cutCurrentCache() {
+        if (mUsedCacheSpace > constants.TILE_TRIM_CACHE_SIZE_BYTES) {
 
-		synchronized (TILE_PATH_BASE) {
+            logger.info("Trimming tile cache from " + mUsedCacheSpace + " to "
+                    + constants.TILE_TRIM_CACHE_SIZE_BYTES);
 
-			if (mUsedCacheSpace > TILE_TRIM_CACHE_SIZE_BYTES) {
+            final List<File> z = getDirectoryFileList(constants.TILE_PATH_BASE());
 
-				logger.info("Trimming tile cache from " + mUsedCacheSpace + " to "
-						+ TILE_TRIM_CACHE_SIZE_BYTES);
+            // order list by files day created from old to new
+            final File[] files = z.toArray(new File[0]);
+            Arrays.sort(files, new Comparator<File>() {
+                @Override
+                public int compare(final File f1, final File f2) {
+                    return Long.valueOf(f1.lastModified()).compareTo(f2.lastModified());
+                }
+            });
 
-				final List<File> z = getDirectoryFileList(TILE_PATH_BASE);
+            for (final File file : files) {
+                if (mUsedCacheSpace <= constants.TILE_TRIM_CACHE_SIZE_BYTES) {
+                    break;
+                }
 
-				// order list by files day created from old to new
-				final File[] files = z.toArray(new File[0]);
-				Arrays.sort(files, new Comparator<File>() {
-					@Override
-					public int compare(final File f1, final File f2) {
-						return Long.valueOf(f1.lastModified()).compareTo(f2.lastModified());
-					}
-				});
+                final long length = file.length();
+                if (file.delete()) {
+                    mUsedCacheSpace -= length;
+                }
+            }
 
-				for (final File file : files) {
-					if (mUsedCacheSpace <= TILE_TRIM_CACHE_SIZE_BYTES) {
-						break;
-					}
-
-					final long length = file.length();
-					if (file.delete()) {
-						mUsedCacheSpace -= length;
-					}
-				}
-
-				logger.info("Finished trimming tile cache");
-			}
-		}
-	}
+            logger.info("Finished trimming tile cache");
+        }
+    }
 
 }

@@ -10,7 +10,9 @@ import android.graphics.drawable.Drawable;
  * @author Nicolas Gramlich
  * 
  */
-public class MapTileCache implements OpenStreetMapTileProviderConstants {
+public class MapTileCache { 
+    static OpenStreetMapTileProviderConstants constants = OpenStreetMapTileProviderConstants.getInstance();
+
 	// ===========================================================
 	// Constants
 	// ===========================================================
@@ -27,7 +29,7 @@ public class MapTileCache implements OpenStreetMapTileProviderConstants {
 	// ===========================================================
 
 	public MapTileCache() {
-		this(CACHE_MAPTILECOUNT_DEFAULT);
+		this(constants.CACHE_MAPTILECOUNT_DEFAULT);
 	}
 
 	/**

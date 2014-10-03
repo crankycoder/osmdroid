@@ -54,8 +54,8 @@ public class MapTileFileArchiveProvider extends MapTileFileStorageProviderBase {
 	 */
 	public MapTileFileArchiveProvider(final IRegisterReceiver pRegisterReceiver,
 			final ITileSource pTileSource, final IArchiveFile[] pArchives) {
-		super(pRegisterReceiver, NUMBER_OF_TILE_FILESYSTEM_THREADS,
-				TILE_FILESYSTEM_MAXIMUM_QUEUE_SIZE);
+		super(pRegisterReceiver, constants.NUMBER_OF_TILE_FILESYSTEM_THREADS,
+				constants.TILE_FILESYSTEM_MAXIMUM_QUEUE_SIZE);
 
 		setTileSource(pTileSource);
 
@@ -107,13 +107,13 @@ public class MapTileFileArchiveProvider extends MapTileFileStorageProviderBase {
 	@Override
 	public int getMinimumZoomLevel() {
 		ITileSource tileSource = mTileSource.get();
-		return tileSource != null ? tileSource.getMinimumZoomLevel() : MINIMUM_ZOOMLEVEL;
+		return tileSource != null ? tileSource.getMinimumZoomLevel() : constants.MINIMUM_ZOOMLEVEL;
 	}
 
 	@Override
 	public int getMaximumZoomLevel() {
 		ITileSource tileSource = mTileSource.get();
-		return tileSource != null ? tileSource.getMaximumZoomLevel() : MAXIMUM_ZOOMLEVEL;
+		return tileSource != null ? tileSource.getMaximumZoomLevel() : constants.MAXIMUM_ZOOMLEVEL;
 	}
 
 	@Override
@@ -157,7 +157,7 @@ public class MapTileFileArchiveProvider extends MapTileFileStorageProviderBase {
 		}
 
 		// path should be optionally configurable
-		final File[] files = OSMDROID_PATH.listFiles();
+		final File[] files = constants.OSMDROID_PATH().listFiles();
 		if (files != null) {
 			for (final File file : files) {
 				final IArchiveFile archiveFile = ArchiveFileFactory.getArchiveFile(file);
@@ -173,7 +173,7 @@ public class MapTileFileArchiveProvider extends MapTileFileStorageProviderBase {
 		for (final IArchiveFile archiveFile : mArchiveFiles) {
 			final InputStream in = archiveFile.getInputStream(tileSource, pTile);
 			if (in != null) {
-				if (DEBUGMODE) {
+				if (constants.DEBUGMODE) {
 					logger.debug("Found tile " + pTile + " in " + archiveFile);
 				}
 				return in;
@@ -201,7 +201,7 @@ public class MapTileFileArchiveProvider extends MapTileFileStorageProviderBase {
 
 			// if there's no sdcard then don't do anything
 			if (!getSdCardAvailable()) {
-				if (DEBUGMODE) {
+				if (constants.DEBUGMODE) {
 					logger.debug("No sdcard - do nothing for tile: " + pTile);
 				}
 				return null;
@@ -209,13 +209,13 @@ public class MapTileFileArchiveProvider extends MapTileFileStorageProviderBase {
 
 			InputStream inputStream = null;
 			try {
-				if (DEBUGMODE) {
+				if (constants.DEBUGMODE) {
 					logger.debug("Tile doesn't exist: " + pTile);
 				}
 
 				inputStream = getInputStream(pTile, tileSource);
 				if (inputStream != null) {
-					if (DEBUGMODE) {
+					if (constants.DEBUGMODE) {
 						logger.debug("Use tile from archive: " + pTile);
 					}
 					final Drawable drawable = tileSource.getDrawable(inputStream);

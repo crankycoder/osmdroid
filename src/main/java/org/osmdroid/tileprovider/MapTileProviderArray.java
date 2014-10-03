@@ -91,7 +91,7 @@ public class MapTileProviderArray extends MapTileProviderBase {
 			}
 
 			if (!alreadyInProgress) {
-				if (DEBUG_TILE_PROVIDERS) {
+				if (constants.DEBUG_TILE_PROVIDERS) {
 					logger.debug("MapTileProviderArray.getMapTile() requested but not in cache, trying from async providers: "
 							+ pTile);
 				}
@@ -198,7 +198,7 @@ public class MapTileProviderArray extends MapTileProviderBase {
 
 	@Override
 	public int getMinimumZoomLevel() {
-		int result = MAXIMUM_ZOOMLEVEL;
+		int result = constants.MAXIMUM_ZOOMLEVEL;
 		synchronized (mTileProviderList) {
 			for (final MapTileModuleProviderBase tileProvider : mTileProviderList) {
 				if (tileProvider.getMinimumZoomLevel() < result) {
@@ -211,7 +211,7 @@ public class MapTileProviderArray extends MapTileProviderBase {
 
 	@Override
 	public int getMaximumZoomLevel() {
-		int result = MINIMUM_ZOOMLEVEL;
+		int result = constants.MINIMUM_ZOOMLEVEL;
 		synchronized (mTileProviderList) {
 			for (final MapTileModuleProviderBase tileProvider : mTileProviderList) {
 				if (tileProvider.getMaximumZoomLevel() > result) {

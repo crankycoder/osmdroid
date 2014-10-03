@@ -4,9 +4,14 @@ import android.os.Environment;
 
 public class TileFilePath {
 
-  public static File directoryOverride;
+  private static File directoryOverride;
 
-  public static File getStorageDirectory() {
+  public synchronized static void setDirectoryOverride(File f) {
+      directoryOverride = f;
+  }
+
+
+  public synchronized static File getStorageDirectory() {
     if (directoryOverride != null) {
       return directoryOverride;
     }

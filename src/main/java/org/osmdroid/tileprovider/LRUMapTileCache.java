@@ -11,8 +11,8 @@ import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.Drawable;
 import android.os.Build;
 
-public class LRUMapTileCache extends LinkedHashMap<MapTile, Drawable>
-	implements OpenStreetMapTileProviderConstants {
+public class LRUMapTileCache extends LinkedHashMap<MapTile, Drawable> {
+	static OpenStreetMapTileProviderConstants constants = OpenStreetMapTileProviderConstants.getInstance();
 
 	public interface TileRemovedListener {
 		void onTileRemoved(MapTile mapTile);
@@ -71,7 +71,7 @@ public class LRUMapTileCache extends LinkedHashMap<MapTile, Drawable>
 	protected boolean removeEldestEntry(final java.util.Map.Entry<MapTile, Drawable> aEldest) {
 		if (size() > mCapacity) {
 			final MapTile eldest = aEldest.getKey();
-			if (DEBUGMODE) {
+			if (constants.DEBUGMODE) {
 				logger.debug("Remove old tile: " + eldest);
 			}
 			remove(eldest);

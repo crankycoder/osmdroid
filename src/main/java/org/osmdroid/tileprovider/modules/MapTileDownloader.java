@@ -71,9 +71,14 @@ public class MapTileDownloader extends MapTileModuleProviderBase {
 
 	public MapTileDownloader(final ITileSource pTileSource,
 			final IFilesystemCache pFilesystemCache,
-			final INetworkAvailablityCheck pNetworkAvailablityCheck) {
-		this(pTileSource, pFilesystemCache, pNetworkAvailablityCheck,
-				NUMBER_OF_TILE_DOWNLOAD_THREADS, TILE_DOWNLOAD_MAXIMUM_QUEUE_SIZE);
+			final INetworkAvailablityCheck pNetworkAvailablityCheck) 
+    {
+
+        this(pTileSource,
+             pFilesystemCache,
+             pNetworkAvailablityCheck,
+             constants.NUMBER_OF_TILE_DOWNLOAD_THREADS,
+             constants.TILE_DOWNLOAD_MAXIMUM_QUEUE_SIZE);
 	}
 
 	public MapTileDownloader(final ITileSource pTileSource,
@@ -122,13 +127,13 @@ public class MapTileDownloader extends MapTileModuleProviderBase {
 	@Override
 	public int getMinimumZoomLevel() {
 		OnlineTileSourceBase tileSource = mTileSource.get();
-		return (tileSource != null ? tileSource.getMinimumZoomLevel() : MINIMUM_ZOOMLEVEL);
+		return (tileSource != null ? tileSource.getMinimumZoomLevel() : constants.MINIMUM_ZOOMLEVEL);
 	}
 
 	@Override
 	public int getMaximumZoomLevel() {
 		OnlineTileSourceBase tileSource = mTileSource.get();
-		return (tileSource != null ? tileSource.getMaximumZoomLevel() : MAXIMUM_ZOOMLEVEL);
+		return (tileSource != null ? tileSource.getMaximumZoomLevel() : constants.MAXIMUM_ZOOMLEVEL);
 	}
 
 	@Override
@@ -164,7 +169,7 @@ public class MapTileDownloader extends MapTileModuleProviderBase {
 
 				if (mNetworkAvailablityCheck != null
 						&& !mNetworkAvailablityCheck.getNetworkAvailable()) {
-					if (DEBUGMODE) {
+					if (constants.DEBUGMODE) {
 						logger.debug("Skipping " + getName() + " due to NetworkAvailabliltyCheck.");
 					}
 					return null;
@@ -172,7 +177,7 @@ public class MapTileDownloader extends MapTileModuleProviderBase {
 
 				final String tileURLString = tileSource.getTileURLString(tile);
 
-				if (DEBUGMODE) {
+				if (constants.DEBUGMODE) {
 					logger.debug("Downloading Maptile from url: " + tileURLString);
 				}
 

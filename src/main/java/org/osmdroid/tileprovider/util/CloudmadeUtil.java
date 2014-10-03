@@ -32,7 +32,9 @@ import android.provider.Settings;
  * "you will always get the same token for the unique user id"
  *
  */
-public class CloudmadeUtil implements OpenStreetMapTileProviderConstants {
+public class CloudmadeUtil {
+
+    static OpenStreetMapTileProviderConstants constants = OpenStreetMapTileProviderConstants.getInstance();
 
 	private static final Logger logger = LoggerFactory.getLogger(CloudmadeUtil.class);
 
@@ -108,7 +110,7 @@ public class CloudmadeUtil implements OpenStreetMapTileProviderConstants {
 					try {
 						httpPost.setEntity(new StringEntity("", "utf-8"));
 						final HttpResponse response = httpClient.execute(httpPost);
-						if (DEBUGMODE) {
+						if (constants.DEBUGMODE) {
 							logger.debug("Response from Cloudmade auth: " + response.getStatusLine());
 						}
 						if (response.getStatusLine().getStatusCode() == HttpStatus.SC_OK) {
@@ -117,7 +119,7 @@ public class CloudmadeUtil implements OpenStreetMapTileProviderConstants {
 										new InputStreamReader(response.getEntity().getContent()),
 										StreamUtils.IO_BUFFER_SIZE);
 							final String line = br.readLine();
-							if (DEBUGMODE) {
+							if (constants.DEBUGMODE) {
 								logger.debug("First line from Cloudmade auth: " + line);
 							}
 							mToken = line.trim();

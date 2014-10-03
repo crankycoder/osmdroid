@@ -49,14 +49,14 @@ public class MapTileFilesystemProvider extends MapTileFileStorageProviderBase {
 
 	public MapTileFilesystemProvider(final IRegisterReceiver pRegisterReceiver,
 			final ITileSource aTileSource) {
-		this(pRegisterReceiver, aTileSource, DEFAULT_MAXIMUM_CACHED_FILE_AGE);
+		this(pRegisterReceiver, aTileSource, constants.DEFAULT_MAXIMUM_CACHED_FILE_AGE);
 	}
 
 	public MapTileFilesystemProvider(final IRegisterReceiver pRegisterReceiver,
 			final ITileSource pTileSource, final long pMaximumCachedFileAge) {
 		this(pRegisterReceiver, pTileSource, pMaximumCachedFileAge,
-				NUMBER_OF_TILE_FILESYSTEM_THREADS,
-				TILE_FILESYSTEM_MAXIMUM_QUEUE_SIZE);
+				constants.NUMBER_OF_TILE_FILESYSTEM_THREADS,
+				constants.TILE_FILESYSTEM_MAXIMUM_QUEUE_SIZE);
 	}
 
 	/**
@@ -104,13 +104,13 @@ public class MapTileFilesystemProvider extends MapTileFileStorageProviderBase {
 	@Override
 	public int getMinimumZoomLevel() {
 		ITileSource tileSource = mTileSource.get();
-		return tileSource != null ? tileSource.getMinimumZoomLevel() : MINIMUM_ZOOMLEVEL;
+		return tileSource != null ? tileSource.getMinimumZoomLevel() : constants.MINIMUM_ZOOMLEVEL;
 	}
 
 	@Override
 	public int getMaximumZoomLevel() {
 		ITileSource tileSource = mTileSource.get();
-		return tileSource != null ? tileSource.getMaximumZoomLevel() : MAXIMUM_ZOOMLEVEL;
+		return tileSource != null ? tileSource.getMaximumZoomLevel() : constants.MAXIMUM_ZOOMLEVEL;
 	}
 
 	@Override
@@ -136,7 +136,7 @@ public class MapTileFilesystemProvider extends MapTileFileStorageProviderBase {
 
 			// if there's no sdcard then don't do anything
 			if (!getSdCardAvailable()) {
-				if (DEBUGMODE) {
+				if (constants.DEBUGMODE) {
 					logger.debug("No sdcard - do nothing for tile: " + tile);
 				}
 				return null;
@@ -144,8 +144,8 @@ public class MapTileFilesystemProvider extends MapTileFileStorageProviderBase {
 
 			// Check the tile source to see if its file is available and if so, then render the
 			// drawable and return the tile
-			final File file = new File(TILE_PATH_BASE,
-					tileSource.getTileRelativeFilenameString(tile) + TILE_PATH_EXTENSION);
+			final File file = new File(constants.TILE_PATH_BASE(),
+					tileSource.getTileRelativeFilenameString(tile) + constants.TILE_PATH_EXTENSION);
 			if (file.exists()) {
 
 				try {
@@ -157,7 +157,7 @@ public class MapTileFilesystemProvider extends MapTileFileStorageProviderBase {
 					final boolean fileExpired = lastModified < now - mMaximumCachedFileAge;
 
 					if (fileExpired && drawable != null) {
-						if (DEBUGMODE) {
+						if (constants.DEBUGMODE) {
 							logger.debug("Tile expired: " + tile);
 						}
 						drawable.setState(new int[] {ExpirableBitmapDrawable.EXPIRED });

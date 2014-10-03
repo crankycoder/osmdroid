@@ -17,8 +17,8 @@ import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.drawable.Drawable;
 
-public abstract class BitmapTileSourceBase implements ITileSource,
-		OpenStreetMapTileProviderConstants {
+public abstract class BitmapTileSourceBase implements ITileSource {
+    static OpenStreetMapTileProviderConstants constants = OpenStreetMapTileProviderConstants.getInstance();
 
 	private static final Logger logger = LoggerFactory.getLogger(BitmapTileSourceBase.class);
 
