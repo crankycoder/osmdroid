@@ -9,8 +9,10 @@ import org.osmdroid.tileprovider.modules.TileWriter;
 import org.osmdroid.tileprovider.tilesource.ITileSource;
 import org.osmdroid.tileprovider.tilesource.TileSourceFactory;
 import org.osmdroid.tileprovider.util.SimpleRegisterReceiver;
+import org.osmdroid.tileprovider.modules.MapTileModuleProviderBase;
 
 import android.content.Context;
+import android.graphics.drawable.Drawable;
 
 /**
  * This top-level tile provider implements a basic tile request chain which includes a
@@ -20,7 +22,7 @@ import android.content.Context;
  * @author Marc Kurtz
  *
  */
-public class BetterTileProvider extends MapTileProviderArray implements IMapTileProviderCallback {
+public class BetterTileProvider extends BetterMapTileProviderArray implements IMapTileProviderCallback {
 
     // private static final Logger logger = LoggerFactory.getLogger(MapTileProviderBasic.class);
 
@@ -56,4 +58,61 @@ public class BetterTileProvider extends MapTileProviderArray implements IMapTile
                 aNetworkAvailablityCheck);
         mTileProviderList.add(downloaderProvider);
     }
+
+    /*
+     * This method is pulled up from BetterMapTileProviderArray
+     */
+	@Override
+	public Drawable getMapTile(final MapTile pTile) {
+		final Drawable tile = mTileCache.getMapTile(pTile);
+		if (tile != null) {
+			return tile;
+		} 
+
+        // @TODO: vng - rewrite this whole thing, we need to create a
+        // MapTileRequest and pass it through the chain of providers.
+        // We need to manage a synchronized set of requests which are
+        // in a request state.
+        //
+        // Any call to getMapTile that misses the cache, or is a
+        // duplicate request for a tile that is already enqued will
+        // yield a null.
+
+        boolean alreadyInProgress = false;
+        synchronized (mWorking) {
+            alreadyInProgress = mWorking.containsKey(pTile);
+        }
+
+        if (!alreadyInProgress) {
+            final MapTileRequestState state;
+            synchronized (mTileProviderList) {
+                final MapTileModuleProviderBase[] providerArray =
+                    new MapTileModuleProviderBase[mTileProviderList.size()];
+                state = new MapTileRequestState(pTile,
+                        mTileProviderList.toArray(providerArray), this);
+            }
+
+            synchronized (mWorking) {
+                // Check again
+                alreadyInProgress = mWorking.containsKey(pTile);
+                if (alreadyInProgress) {
+                    return null;
+                }
+
+                mWorking.put(pTile, state);
+            }
+
+            final MapTileModuleProviderBase provider = findNextAppropriateProvider(state);
+            if (provider != null) {
+                // @TODO: loadMapTileAsync spawns a thread to download
+                // the tile, I think this is racy as multiple async calls seem
+                // to be happening on the same URL
+                provider.loadMapTileAsync(state);
+            } else {
+                mapTileRequestFailed(state);
+            }
+        }
+        return tile;
+	}
+
 }
