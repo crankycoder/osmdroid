@@ -153,6 +153,17 @@ public class MapTileFilesystemProvider extends MapTileFileStorageProviderBase {
                     // @TODO vng - need to implement a better cache
                     // expiry policy. Probably in a separate thread
 
+                    // Check to see if file has expired
+                    final long now = System.currentTimeMillis();
+                    final long lastModified = file.lastModified();
+                    final boolean fileExpired = lastModified < now - mMaximumCachedFileAge;
+
+                    if (fileExpired && drawable != null) {
+                        if (DEBUGMODE) {
+                            logger.debug("Tile expired: " + tile);
+                        }
+                        drawable.setState(new int[] {ExpirableBitmapDrawable.EXPIRED });
+                    }
 
 					return drawable;
 				} catch (final LowMemoryException e) {
