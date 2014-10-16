@@ -3,6 +3,7 @@ package org.osmdroid.tileprovider;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.Map;
 import java.util.List;
 
 import org.osmdroid.tileprovider.modules.MapTileModuleProviderBase;
@@ -30,7 +31,7 @@ import android.graphics.drawable.Drawable;
  */
 public class BetterMapTileProviderArray extends MapTileProviderBase {
 
-	protected final HashMap<MapTile, MapTileRequestState> mWorking;
+    protected final Map<MapTile, MapTileRequestState> mWorking = Collections.synchronizedMap(new HashMap<MapTile, MapTileRequestState>());
 
 	private static final Logger logger = LoggerFactory.getLogger(BetterMapTileProviderArray.class);
 
@@ -60,23 +61,16 @@ public class BetterMapTileProviderArray extends MapTileProviderBase {
 			final MapTileModuleProviderBase[] pTileProviderArray) {
 		super(pTileSource);
 
-		mWorking = new HashMap<MapTile, MapTileRequestState>();
-
 		mTileProviderList = new ArrayList<MapTileModuleProviderBase>();
 		Collections.addAll(mTileProviderList, pTileProviderArray);
 	}
 
 	@Override
-	public void detach() {
-		synchronized (mTileProviderList) {
-			for (final MapTileModuleProviderBase tileProvider : mTileProviderList) {
-				tileProvider.detach();
-			}
-		}
-
-		synchronized (mWorking) {
-			mWorking.clear();
-		}
+	public synchronized void detach() {
+        for (final MapTileModuleProviderBase tileProvider : mTileProviderList) {
+            tileProvider.detach();
+        }
+        mWorking.clear();
 	}
 
 	@Override
@@ -125,28 +119,26 @@ public class BetterMapTileProviderArray extends MapTileProviderBase {
 	}
 
 	@Override
-	public void mapTileRequestCompleted(final MapTileRequestState aState, final Drawable aDrawable) {
-		synchronized (mWorking) {
-			mWorking.remove(aState.getMapTile());
-		}
+	public synchronized void mapTileRequestCompleted(final MapTileRequestState aState, final Drawable aDrawable) {
+        mWorking.remove(aState.getMapTile());
+        //logger.info("This: ["+this+"] mWorking Remove: ["+aState.getMapTile()+"]");
 		super.mapTileRequestCompleted(aState, aDrawable);
 	}
 
 	@Override
-	public void mapTileRequestFailed(final MapTileRequestState aState) {
+	public synchronized void mapTileRequestFailed(final MapTileRequestState aState) {
 		final MapTileModuleProviderBase nextProvider = findNextAppropriateProvider(aState);
 		if (nextProvider != null) {
 			nextProvider.loadMapTileAsync(aState);
 		} else {
-			synchronized (mWorking) {
-				mWorking.remove(aState.getMapTile());
-			}
+            mWorking.remove(aState.getMapTile());
+            //logger.info("This: ["+this+"] mWorking Remove: ["+aState.getMapTile()+"]");
 			super.mapTileRequestFailed(aState);
 		}
 	}
 
 	@Override
-	public void mapTileRequestExpiredTile(MapTileRequestState aState, Drawable aDrawable) {
+	public synchronized void mapTileRequestExpiredTile(MapTileRequestState aState, Drawable aDrawable) {
 		// Call through to the super first so aState.getCurrentProvider() still contains the proper
 		// provider.
 		super.mapTileRequestExpiredTile(aState, aDrawable);
@@ -156,9 +148,8 @@ public class BetterMapTileProviderArray extends MapTileProviderBase {
 		if (nextProvider != null) {
 			nextProvider.loadMapTileAsync(aState);
 		} else {
-			synchronized (mWorking) {
-				mWorking.remove(aState.getMapTile());
-			}
+            mWorking.remove(aState.getMapTile());
+            //logger.info("This: ["+this+"] mWorking Remove: ["+aState.getMapTile()+"]");
 		}
 	}
 
@@ -166,7 +157,7 @@ public class BetterMapTileProviderArray extends MapTileProviderBase {
 	 * We want to not use a provider that doesn't exist anymore in the chain, and we want to not use
 	 * a provider that requires a data connection when one is not available.
 	 */
-	protected MapTileModuleProviderBase findNextAppropriateProvider(final MapTileRequestState aState) {
+	private MapTileModuleProviderBase findNextAppropriateProvider(final MapTileRequestState aState) {
 		MapTileModuleProviderBase provider = null;
 		boolean providerDoesntExist = false, providerCantGetDataConnection = false, providerCantServiceZoomlevel = false;
 		// The logic of the while statement is
@@ -189,47 +180,38 @@ public class BetterMapTileProviderArray extends MapTileProviderBase {
 		return provider;
 	}
 
-	public boolean getProviderExists(final MapTileModuleProviderBase provider) {
-		synchronized (mTileProviderList) {
-			return mTileProviderList.contains(provider);
-		}
+	public synchronized boolean getProviderExists(final MapTileModuleProviderBase provider) {
+        return mTileProviderList.contains(provider);
 	}
 
 	@Override
-	public int getMinimumZoomLevel() {
+	public synchronized int getMinimumZoomLevel() {
 		int result = MAXIMUM_ZOOMLEVEL;
-		synchronized (mTileProviderList) {
-			for (final MapTileModuleProviderBase tileProvider : mTileProviderList) {
-				if (tileProvider.getMinimumZoomLevel() < result) {
-					result = tileProvider.getMinimumZoomLevel();
-				}
-			}
-		}
+        for (final MapTileModuleProviderBase tileProvider : mTileProviderList) {
+            if (tileProvider.getMinimumZoomLevel() < result) {
+                result = tileProvider.getMinimumZoomLevel();
+            }
+        }
 		return result;
 	}
 
 	@Override
-	public int getMaximumZoomLevel() {
+	public synchronized int getMaximumZoomLevel() {
 		int result = MINIMUM_ZOOMLEVEL;
-		synchronized (mTileProviderList) {
-			for (final MapTileModuleProviderBase tileProvider : mTileProviderList) {
-				if (tileProvider.getMaximumZoomLevel() > result) {
-					result = tileProvider.getMaximumZoomLevel();
-				}
-			}
-		}
+        for (final MapTileModuleProviderBase tileProvider : mTileProviderList) {
+            if (tileProvider.getMaximumZoomLevel() > result) {
+                result = tileProvider.getMaximumZoomLevel();
+            }
+        }
 		return result;
 	}
 
 	@Override
-	public void setTileSource(final ITileSource aTileSource) {
+	public synchronized void setTileSource(final ITileSource aTileSource) {
 		super.setTileSource(aTileSource);
-
-		synchronized (mTileProviderList) {
-			for (final MapTileModuleProviderBase tileProvider : mTileProviderList) {
-				tileProvider.setTileSource(aTileSource);
-				clearTileCache();
-			}
-		}
+        for (final MapTileModuleProviderBase tileProvider : mTileProviderList) {
+            tileProvider.setTileSource(aTileSource);
+            clearTileCache();
+        }
 	}
 }
