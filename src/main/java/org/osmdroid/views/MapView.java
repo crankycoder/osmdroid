@@ -24,7 +24,7 @@ import org.osmdroid.events.ScrollEvent;
 import org.osmdroid.events.ZoomEvent;
 import org.osmdroid.tileprovider.MapTileProviderArray;
 import org.osmdroid.tileprovider.MapTileProviderBase;
-import org.osmdroid.tileprovider.MapTileProviderBasic;
+import org.osmdroid.tileprovider.BetterTileProvider;
 import org.osmdroid.tileprovider.modules.MapTileModuleProviderBase;
 import org.osmdroid.tileprovider.tilesource.IStyledTileSource;
 import org.osmdroid.tileprovider.tilesource.ITileSource;
@@ -149,17 +149,18 @@ public class MapView extends ViewGroup implements IMapView, MapViewConstants,
 		this.mScroller = new Scroller(context);
 		TileSystem.setTileSize(tileSizePixels);
 
+        logger.info("Constructor received TileProvider = ["+tileProvider+"]");
 		if (tileProvider == null) {
 			final ITileSource tileSource = getTileSourceFromAttributes(attrs);
-			tileProvider = isInEditMode()
-					? new MapTileProviderArray(tileSource, null, new MapTileModuleProviderBase[0])
-					: new MapTileProviderBasic(context, tileSource);
+			tileProvider = new BetterTileProvider(context, tileSource);
 		}
 
 		mTileRequestCompleteHandler = tileRequestCompleteHandler == null
 				? new SimpleInvalidationHandler(this)
 				: tileRequestCompleteHandler;
 		mTileProvider = tileProvider;
+        logger.info("TileProvider is: ["+mTileProvider.getClass().getName()+"]");
+
 		mTileProvider.setTileRequestCompleteHandler(mTileRequestCompleteHandler);
 
 		this.mMapOverlay = new TilesOverlay(mTileProvider, mResourceProxy);
