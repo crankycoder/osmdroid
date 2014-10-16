@@ -5,6 +5,7 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.charset.Charset;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
@@ -25,219 +26,258 @@ import org.slf4j.LoggerFactory;
  * @author Neil Boyd
  *
  */
+// @TODO: vng IFilesystemCache is only implemented by this one class.
+// We should just tighten up the public interface of TileWriter and
+// drop IFilesystemCache entirely
 public class TileWriter implements IFilesystemCache, OpenStreetMapTileProviderConstants {
 
-	// ===========================================================
-	// Constants
-	// ===========================================================
+    // ===========================================================
+    // Constants
+    // ===========================================================
 
-	private static final Logger logger = LoggerFactory.getLogger(TileWriter.class);
+    private static final Logger logger = LoggerFactory.getLogger(TileWriter.class);
 
-	// ===========================================================
-	// Fields
-	// ===========================================================
+    // ===========================================================
+    // Fields
+    // ===========================================================
 
-	/** amount of disk space used by tile cache **/
-	private static long mUsedCacheSpace;
+    /** amount of disk space used by tile cache **/
+    private static long mUsedCacheSpace;
 
-	// ===========================================================
-	// Constructors
-	// ===========================================================
+    // ===========================================================
+    // Constructors
+    // ===========================================================
 
-	public TileWriter() {
+    public TileWriter() {
+        shrinkCacheInBackground();
+    }
 
-		// do this in the background because it takes a long time
-		final Thread t = new Thread() {
-			@Override
-			public void run() {
-				mUsedCacheSpace = 0; // because it's static
-				calculateDirectorySize(TILE_PATH_BASE);
-				if (mUsedCacheSpace > TILE_MAX_CACHE_SIZE_BYTES) {
-					cutCurrentCache();
-				}
-				if (DEBUGMODE) {
-					logger.debug("Finished init thread");
-				}
-			}
-		};
-		t.setPriority(Thread.MIN_PRIORITY);
-		t.start();
-	}
+    private void shrinkCacheInBackground() {
+        // @TODO: vng put a static synchronized guard here so that the
+        // background shrink can only happen in 1 background thread at
+        // a time.
+        //
+        // We can then invoke the shrink method as much as we want
+        // without worrying about spinning up too many background
+        // threads.
+        final Thread t = new Thread() {
+            @Override
+            public void run() {
+                mUsedCacheSpace = 0; // because it's static
+                calculateDirectorySize(TILE_PATH_BASE);
+                if (mUsedCacheSpace > TILE_MAX_CACHE_SIZE_BYTES) {
+                    cutCurrentCache();
+                }
+            }
+        };
+        t.setPriority(Thread.MIN_PRIORITY);
+        t.start();
+    }
 
-	// ===========================================================
-	// Getter & Setter
-	// ===========================================================
+    // ===========================================================
+    // Getter & Setter
+    // ===========================================================
 
-	/**
-	 * Get the amount of disk space used by the tile cache. This will initially be zero since the
-	 * used space is calculated in the background.
-	 *
-	 * @return size in bytes
-	 */
-	public static long getUsedCacheSpace() {
-		return mUsedCacheSpace;
-	}
+    /**
+     * Get the amount of disk space used by the tile cache. This will initially be zero since the
+     * used space is calculated in the background.
+     *
+     * @return size in bytes
+     */
+    public static long getUsedCacheSpace() {
+        return mUsedCacheSpace;
+    }
 
-	// ===========================================================
-	// Methods from SuperClass/Interfaces
-	// ===========================================================
+    // ===========================================================
+    // Methods from SuperClass/Interfaces
+    // ===========================================================
 
-	@Override
-	public boolean saveFile(final ITileSource pTileSource, final MapTile pTile,
-			final InputStream pStream) {
+    @Override
+    public boolean saveFile(final ITileSource pTileSource, final MapTile pTile,
+            final InputStream pStream, String etag) {
 
-		final File file = new File(TILE_PATH_BASE, pTileSource.getTileRelativeFilenameString(pTile)
-				+ TILE_PATH_EXTENSION);
+        File file;
+        File etagFile;
+        BufferedOutputStream outputStream;
 
-		final File parent = file.getParentFile();
-		if (!parent.exists() && !createFolderAndCheckIfExists(parent)) {
-			return false;
-		}
+        File parent;
 
-		BufferedOutputStream outputStream = null;
-		try {
-			outputStream = new BufferedOutputStream(new FileOutputStream(file.getPath()),
-					StreamUtils.IO_BUFFER_SIZE);
-			final long length = StreamUtils.copy(pStream, outputStream);
+        if (etag != null) {
+            String tileFilename = pTileSource.getTileRelativeFilenameString(pTile);
+            etagFile = new File(TILE_PATH_BASE,
+                                tileFilename + ".etag");
 
-			mUsedCacheSpace += length;
-			if (mUsedCacheSpace > TILE_MAX_CACHE_SIZE_BYTES) {
-				cutCurrentCache(); // TODO perhaps we should do this in the background
-			}
-		} catch (final IOException e) {
-			return false;
-		} finally {
-			if (outputStream != null) {
-				StreamUtils.closeStream(outputStream);
-			}
-		}
-		return true;
-	}
+            parent = etagFile.getParentFile();
 
-	// ===========================================================
-	// Methods
-	// ===========================================================
+            if (!parent.exists() && !createFolderAndCheckIfExists(parent)) {
+                return false;
+            }
 
-	private boolean createFolderAndCheckIfExists(final File pFile) {
-		if (pFile.mkdirs()) {
-			return true;
-		}
-		if (DEBUGMODE) {
-			logger.debug("Failed to create " + pFile + " - wait and check again");
-		}
 
-		// if create failed, wait a bit in case another thread created it
-		try {
-			Thread.sleep(500);
-		} catch (final InterruptedException ignore) {
-		}
-		// and then check again
-		if (pFile.exists()) {
-			if (DEBUGMODE) {
-				logger.debug("Seems like another thread created " + pFile);
-			}
-			return true;
-		} else {
-			if (DEBUGMODE) {
-				logger.debug("File still doesn't exist: " + pFile);
-			}
-			return false;
-		}
-	}
+            try {
+                FileOutputStream fos = new FileOutputStream(etagFile.getPath());
+                outputStream = new BufferedOutputStream(fos);
+                outputStream.write(etag.getBytes(Charset.forName("UTF-8")));
+                outputStream.flush();
+                logger.info("Wrote ["+ etag +"] file at: ["+etagFile.getPath()+"]");
+            } catch (IOException ioEx) {
+                logger.error("Failed to create etag file: ["+etagFile.getPath()+"]", ioEx);
+            }
+        }
 
-	private void calculateDirectorySize(final File pDirectory) {
-		final File[] z = pDirectory.listFiles();
-		if (z != null) {
-			for (final File file : z) {
-				if (file.isFile()) {
-					mUsedCacheSpace += file.length();
-				}
-				if (file.isDirectory() && !isSymbolicDirectoryLink(pDirectory, file)) {
-					calculateDirectorySize(file); // *** recurse ***
-				}
-			}
-		}
-	}
+        file = new File(TILE_PATH_BASE, pTileSource.getTileRelativeFilenameString(pTile)
+                + TILE_PATH_EXTENSION);
 
-	/**
-	 * Checks to see if it appears that a directory is a symbolic link. It does this by comparing
-	 * the canonical path of the parent directory and the parent directory of the directory's
-	 * canonical path. If they are equal, then they come from the same true parent. If not, then
-	 * pDirectory is a symbolic link. If we get an exception, we err on the side of caution and
-	 * return "true" expecting the calculateDirectorySize to now skip further processing since
-	 * something went goofy.
-	 */
-	private boolean isSymbolicDirectoryLink(final File pParentDirectory, final File pDirectory) {
-		try {
-			final String canonicalParentPath1 = pParentDirectory.getCanonicalPath();
-			final String canonicalParentPath2 = pDirectory.getCanonicalFile().getParent();
-			return !canonicalParentPath1.equals(canonicalParentPath2);
-		} catch (final IOException e) {
-			return true;
-		} catch (final NoSuchElementException e) {
-			// See: http://code.google.com/p/android/issues/detail?id=4961
-			// See: http://code.google.com/p/android/issues/detail?id=5807
-			return true;
-		}
+        parent = file.getParentFile();
 
-	}
+        if (!parent.exists() && !createFolderAndCheckIfExists(parent)) {
+            return false;
+        }
 
-	private List<File> getDirectoryFileList(final File aDirectory) {
-		final List<File> files = new ArrayList<File>();
+        outputStream = null;
+        try {
+            outputStream = new BufferedOutputStream(new FileOutputStream(file.getPath()),
+                    StreamUtils.IO_BUFFER_SIZE);
+            final long length = StreamUtils.copy(pStream, outputStream);
 
-		final File[] z = aDirectory.listFiles();
-		if (z != null) {
-			for (final File file : z) {
-				if (file.isFile()) {
-					files.add(file);
-				}
-				if (file.isDirectory()) {
-					files.addAll(getDirectoryFileList(file));
-				}
-			}
-		}
+            mUsedCacheSpace += length;
+            if (mUsedCacheSpace > TILE_MAX_CACHE_SIZE_BYTES) {
+                cutCurrentCache(); // TODO perhaps we should do this in the background
+            }
+        } catch (final IOException e) {
+            return false;
+        } finally {
+            if (outputStream != null) {
+                StreamUtils.closeStream(outputStream);
+            }
+        }
+        return true;
+    }
 
-		return files;
-	}
+    // ===========================================================
+    // Methods
+    // ===========================================================
 
-	/**
-	 * If the cache size is greater than the max then trim it down to the trim level. This method is
-	 * synchronized so that only one thread can run it at a time.
-	 */
-	private void cutCurrentCache() {
+    private boolean createFolderAndCheckIfExists(final File pFile) {
+        if (pFile.mkdirs()) {
+            return true;
+        }
+        if (DEBUGMODE) {
+            logger.debug("Failed to create " + pFile + " - wait and check again");
+        }
 
-		synchronized (TILE_PATH_BASE) {
+        // if create failed, wait a bit in case another thread created it
+        try {
+            Thread.sleep(500);
+        } catch (final InterruptedException ignore) {
+        }
+        // and then check again
+        if (pFile.exists()) {
+            if (DEBUGMODE) {
+                logger.debug("Seems like another thread created " + pFile);
+            }
+            return true;
+        } else {
+            if (DEBUGMODE) {
+                logger.debug("File still doesn't exist: " + pFile);
+            }
+            return false;
+        }
+    }
 
-			if (mUsedCacheSpace > TILE_TRIM_CACHE_SIZE_BYTES) {
+    private void calculateDirectorySize(final File pDirectory) {
+        final File[] z = pDirectory.listFiles();
+        if (z != null) {
+            for (final File file : z) {
+                if (file.isFile()) {
+                    mUsedCacheSpace += file.length();
+                }
+                if (file.isDirectory() && !isSymbolicDirectoryLink(pDirectory, file)) {
+                    calculateDirectorySize(file); // *** recurse ***
+                }
+            }
+        }
+    }
 
-				logger.info("Trimming tile cache from " + mUsedCacheSpace + " to "
-						+ TILE_TRIM_CACHE_SIZE_BYTES);
+    /**
+     * Checks to see if it appears that a directory is a symbolic link. It does this by comparing
+     * the canonical path of the parent directory and the parent directory of the directory's
+     * canonical path. If they are equal, then they come from the same true parent. If not, then
+     * pDirectory is a symbolic link. If we get an exception, we err on the side of caution and
+     * return "true" expecting the calculateDirectorySize to now skip further processing since
+     * something went goofy.
+     */
+    private boolean isSymbolicDirectoryLink(final File pParentDirectory, final File pDirectory) {
+        try {
+            final String canonicalParentPath1 = pParentDirectory.getCanonicalPath();
+            final String canonicalParentPath2 = pDirectory.getCanonicalFile().getParent();
+            return !canonicalParentPath1.equals(canonicalParentPath2);
+        } catch (final IOException e) {
+            return true;
+        } catch (final NoSuchElementException e) {
+            // See: http://code.google.com/p/android/issues/detail?id=4961
+            // See: http://code.google.com/p/android/issues/detail?id=5807
+            return true;
+        }
 
-				final List<File> z = getDirectoryFileList(TILE_PATH_BASE);
+    }
 
-				// order list by files day created from old to new
-				final File[] files = z.toArray(new File[0]);
-				Arrays.sort(files, new Comparator<File>() {
-					@Override
-					public int compare(final File f1, final File f2) {
-						return Long.valueOf(f1.lastModified()).compareTo(f2.lastModified());
-					}
-				});
+    private List<File> getDirectoryFileList(final File aDirectory) {
+        final List<File> files = new ArrayList<File>();
 
-				for (final File file : files) {
-					if (mUsedCacheSpace <= TILE_TRIM_CACHE_SIZE_BYTES) {
-						break;
-					}
+        final File[] z = aDirectory.listFiles();
+        if (z != null) {
+            for (final File file : z) {
+                if (file.isFile()) {
+                    files.add(file);
+                }
+                if (file.isDirectory()) {
+                    files.addAll(getDirectoryFileList(file));
+                }
+            }
+        }
 
-					final long length = file.length();
-					if (file.delete()) {
-						mUsedCacheSpace -= length;
-					}
-				}
+        return files;
+    }
 
-				logger.info("Finished trimming tile cache");
-			}
-		}
-	}
+    /**
+     * If the cache size is greater than the max then trim it down to the trim level. This method is
+     * synchronized so that only one thread can run it at a time.
+     */
+    private void cutCurrentCache() {
+
+        synchronized (TILE_PATH_BASE) {
+
+            if (mUsedCacheSpace > TILE_TRIM_CACHE_SIZE_BYTES) {
+
+                logger.info("Trimming tile cache from " + mUsedCacheSpace + " to "
+                        + TILE_TRIM_CACHE_SIZE_BYTES);
+
+                final List<File> z = getDirectoryFileList(TILE_PATH_BASE);
+
+                // order list by files day created from old to new
+                final File[] files = z.toArray(new File[0]);
+                Arrays.sort(files, new Comparator<File>() {
+                    @Override
+                    public int compare(final File f1, final File f2) {
+                        return Long.valueOf(f1.lastModified()).compareTo(f2.lastModified());
+                    }
+                });
+
+                for (final File file : files) {
+                    if (mUsedCacheSpace <= TILE_TRIM_CACHE_SIZE_BYTES) {
+                        break;
+                    }
+
+                    final long length = file.length();
+                    if (file.delete()) {
+                        mUsedCacheSpace -= length;
+                    }
+                }
+
+                logger.info("Finished trimming tile cache");
+            }
+        }
+    }
 
 }
