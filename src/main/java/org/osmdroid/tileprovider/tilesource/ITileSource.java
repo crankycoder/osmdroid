@@ -82,4 +82,9 @@ public interface ITileSource {
 	 * @return the tile size in pixels
 	 */
 	public int getTileSizePixels();
+
+
+    public String getTileURLString(MapTile tile);
+
+
 }

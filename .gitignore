@@ -37,3 +37,6 @@ build/
 
 
 maven-android-sdk-deployer
+
+# vim swap files
+*.sw?

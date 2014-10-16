@@ -2,7 +2,9 @@ package org.osmdroid.tileprovider.modules;
 
 import java.io.File;
 import java.util.concurrent.atomic.AtomicReference;
+import java.io.IOException;
 
+import org.osmdroid.tileprovider.modules.TileDownloaderDelegate;
 import org.osmdroid.tileprovider.ExpirableBitmapDrawable;
 import org.osmdroid.tileprovider.IRegisterReceiver;
 import org.osmdroid.tileprovider.MapTile;
@@ -16,47 +18,49 @@ import org.slf4j.LoggerFactory;
 import android.graphics.drawable.Drawable;
 
 /**
- * Implements a file system cache and provides cached tiles. This functions as a tile provider by
- * serving cached tiles for the supplied tile source.
+ * This is a fork of the  MapTileFilesystemProvider which also spawns
+ * off threads to download tiles asynchronously if a file on local
+ * storage cannot be found.
  *
+ * Concurrent tile access controls are required when spawning threads
+ * to ensure that multiple requests for the same tile are not made to
+ * the network.
+ *
+ * @author Victor Ng
  * @author Marc Kurtz
  * @author Nicolas Gramlich
  *
  */
-public class MapTileFilesystemProvider extends MapTileFileStorageProviderBase {
+public class SmartFSProvider extends MapTileFileStorageProviderBase {
 
     // ===========================================================
     // Constants
     // ===========================================================
 
-    private static final Logger logger = LoggerFactory.getLogger(MapTileFilesystemProvider.class);
+    private static final Logger logger = LoggerFactory.getLogger(SmartFSProvider.class);
+    public static final int ONE_HOUR_MS = 1000*60*60;
 
     // ===========================================================
     // Fields
     // ===========================================================
 
-    private final long mMaximumCachedFileAge;
-
     private final AtomicReference<ITileSource> mTileSource = new AtomicReference<ITileSource>();
+    private TileDownloaderDelegate delegate;
 
     // ===========================================================
     // Constructors
     // ===========================================================
 
-    public MapTileFilesystemProvider(final IRegisterReceiver pRegisterReceiver) {
+    public SmartFSProvider(final IRegisterReceiver pRegisterReceiver) {
         this(pRegisterReceiver, TileSourceFactory.DEFAULT_TILE_SOURCE);
     }
 
-    public MapTileFilesystemProvider(final IRegisterReceiver pRegisterReceiver,
-            final ITileSource aTileSource) {
-        this(pRegisterReceiver, aTileSource, DEFAULT_MAXIMUM_CACHED_FILE_AGE);
-    }
-
-    public MapTileFilesystemProvider(final IRegisterReceiver pRegisterReceiver,
-            final ITileSource pTileSource, final long pMaximumCachedFileAge) {
-        this(pRegisterReceiver, pTileSource, pMaximumCachedFileAge,
-                NUMBER_OF_TILE_FILESYSTEM_THREADS,
-                TILE_FILESYSTEM_MAXIMUM_QUEUE_SIZE);
+    public SmartFSProvider(final IRegisterReceiver pRegisterReceiver,
+                           final ITileSource pTileSource) {
+        this(pRegisterReceiver, 
+             pTileSource, 
+             NUMBER_OF_TILE_FILESYSTEM_THREADS,
+             TILE_FILESYSTEM_MAXIMUM_QUEUE_SIZE);
     }
 
     /**
@@ -65,35 +69,37 @@ public class MapTileFilesystemProvider extends MapTileFileStorageProviderBase {
      *
      * @param pRegisterReceiver
      */
-    public MapTileFilesystemProvider(final IRegisterReceiver pRegisterReceiver,
-            final ITileSource pTileSource, final long pMaximumCachedFileAge, int pThreadPoolSize,
-            int pPendingQueueSize) {
+    public SmartFSProvider(final IRegisterReceiver pRegisterReceiver,
+                           final ITileSource pTileSource, 
+                           int pThreadPoolSize,
+                           int pPendingQueueSize) {
         super(pRegisterReceiver, pThreadPoolSize, pPendingQueueSize);
         setTileSource(pTileSource);
-
-        mMaximumCachedFileAge = pMaximumCachedFileAge;
     }
     // ===========================================================
     // Getter & Setter
     // ===========================================================
 
+    public void configureDelegate(TileDownloaderDelegate d) {
+        delegate = d;
+    }
     // ===========================================================
     // Methods from SuperClass/Interfaces
     // ===========================================================
 
     @Override
     public boolean getUsesDataConnection() {
-        return false;
+        return true;
     }
 
     @Override
     protected String getName() {
-        return "File System Cache Provider";
+        return "SmartFSProvider";
     }
 
     @Override
     protected String getThreadGroupName() {
-        return "filesystem";
+        return "smartFsProvider";
     }
 
     @Override
@@ -144,27 +150,58 @@ public class MapTileFilesystemProvider extends MapTileFileStorageProviderBase {
 
             // Check the tile source to see if its file is available and if so, then render the
             // drawable and return the tile
-            final File file = new File(TILE_PATH_BASE,
+            File file = new File(TILE_PATH_BASE,
                     tileSource.getTileRelativeFilenameString(tile) + TILE_PATH_EXTENSION);
+
+            final Drawable drawable; 
             if (file.exists()) {
-
+                boolean tileIsCurrent = false;
                 try {
-                    final Drawable drawable = tileSource.getDrawable(file.getPath());
-                    // @TODO vng - need to implement a better cache
-                    // expiry policy. Probably in a separate thread
+                    tileIsCurrent = delegate.isTileCurrent(tileSource, tile);
+                } catch (IOException ioEx) {
+                    log("Error fetching etag status of file");
+                    logger.error("Error checking etag status", ioEx);
+                    return null;
+                }
 
-                    // Check to see if file has expired
-                    final long now = System.currentTimeMillis();
-                    final long lastModified = file.lastModified();
-                    final boolean fileExpired = lastModified < now - mMaximumCachedFileAge;
-
-                    if (fileExpired && drawable != null) {
-                        if (DEBUGMODE) {
-                            logger.debug("Tile expired: " + tile);
-                        }
-                        drawable.setState(new int[] {ExpirableBitmapDrawable.EXPIRED });
+                if (tileIsCurrent) {
+                    // Use the ondisk tile
+                    try {
+                        drawable = tileSource.getDrawable(file.getPath());
+                        log("returning working tile");
+                        return drawable;
+                    } catch (final LowMemoryException e) {
+                        // low memory so empty the queue
+                        logger.warn("LowMemoryException downloading MapTile: " + tile + " : " + e);
+                        throw new CantContinueException(e);
                     }
+                }
+            }
 
+            // call the delegate and load a tile from the network
+            if (delegate == null) {
+                log("delegate is null");
+                return null;
+            }
+
+            boolean writeOK = false;
+            try {
+                writeOK = delegate.downloadTile(tileSource, tile);
+            } catch (IOException ioEx) {
+                log("Error fetching tile from map server");
+                logger.error("Error fetching tile from map server", ioEx);
+                return null;
+            }
+            // @TODO: the writeOK flag isn't always correct - just
+            // ignore it for now and test for file existence. The tile
+            // will get updated anyway on the next redraw using
+            // conditional get
+
+            file = new File(TILE_PATH_BASE, tileSource.getTileRelativeFilenameString(tile) + TILE_PATH_EXTENSION);
+            if (file.exists()) {
+                try {
+                    drawable = tileSource.getDrawable(file.getPath());
+                    log("returning working tile!");
                     return drawable;
                 } catch (final LowMemoryException e) {
                     // low memory so empty the queue
@@ -173,8 +210,13 @@ public class MapTileFilesystemProvider extends MapTileFileStorageProviderBase {
                 }
             }
 
+            log("Error loading tile writeOK: ["+writeOK+"] File Status: ["+file.exists()+"]");
             // If we get here then there is no file in the file cache
             return null;
         }
+    }
+
+    private void log(String msg) {
+        logger.info("osmdroid: " + msg);
     }
 }
