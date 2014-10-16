@@ -80,49 +80,48 @@ public class BetterMapTileProviderArray extends MapTileProviderBase {
 	}
 
 	@Override
-	public Drawable getMapTile(final MapTile pTile) {
+	public synchronized Drawable getMapTile(final MapTile pTile) {
 		final Drawable tile = mTileCache.getMapTile(pTile);
-		if (tile != null && !ExpirableBitmapDrawable.isDrawableExpired(tile)) {
+		if (tile != null) {
 			return tile;
-		} else {
-			boolean alreadyInProgress = false;
-			synchronized (mWorking) {
-				alreadyInProgress = mWorking.containsKey(pTile);
-			}
+		} 
 
-			if (!alreadyInProgress) {
-				if (DEBUG_TILE_PROVIDERS) {
-					logger.debug("BetterMapTileProviderArray.getMapTile() requested but not in cache, trying from async providers: "
-							+ pTile);
-				}
+        // @TODO: vng - rewrite this whole thing, we need to create a
+        // MapTileRequest and pass it through the chain of providers.
+        // We need to manage a synchronized set of requests which are
+        // in a request state.
+        //
+        // Any call to getMapTile that misses the cache, or is a
+        // duplicate request for a tile that is already enqued will
+        // yield a null.
 
-				final MapTileRequestState state;
-				synchronized (mTileProviderList) {
-					final MapTileModuleProviderBase[] providerArray =
-						new MapTileModuleProviderBase[mTileProviderList.size()];
-					state = new MapTileRequestState(pTile,
-							mTileProviderList.toArray(providerArray), this);
-				}
+        boolean alreadyInProgress = false;
+        alreadyInProgress = mWorking.containsKey(pTile);
 
-				synchronized (mWorking) {
-					// Check again
-					alreadyInProgress = mWorking.containsKey(pTile);
-					if (alreadyInProgress) {
-						return null;
-					}
+        if (!alreadyInProgress) {
+            final MapTileModuleProviderBase[] providerArray = new MapTileModuleProviderBase[mTileProviderList.size()];
 
-					mWorking.put(pTile, state);
-				}
+            // Creat a MapTileRequestState that has a pointer to
+            // an array of providers
+            final MapTileRequestState state = new MapTileRequestState(pTile, mTileProviderList.toArray(providerArray), this);
+            mWorking.put(pTile, state);
+            //long ts = System.currentTimeMillis();
+            //logger.info("This: ["+this+"] " + ts + " mWorking Put: ["+pTile+"]");
 
-				final MapTileModuleProviderBase provider = findNextAppropriateProvider(state);
-				if (provider != null) {
-					provider.loadMapTileAsync(state);
-				} else {
-					mapTileRequestFailed(state);
-				}
-			}
-			return tile;
-		}
+            final MapTileModuleProviderBase provider = findNextAppropriateProvider(state);
+            if (provider != null) {
+                // @TODO: vng loadMapTileAsync spawns a thread to download
+                // the tile, I think this is racy as multiple async calls seem
+                // to be happening on the same URL
+                provider.loadMapTileAsync(state);
+            } else {
+                mapTileRequestFailed(state);
+            }
+        } else {
+            //long ts = System.currentTimeMillis();
+            //logger.info(ts +" mWorking is processing: ["+pTile+"]");
+        }
+        return tile;
 	}
 
 	@Override
