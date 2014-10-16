@@ -208,6 +208,9 @@ public class MapTileDownloader extends MapTileModuleProviderBase {
 				// Save the data to the filesystem cache
 				if (mFilesystemCache != null) {
 					mFilesystemCache.saveFile(tileSource, tile, byteStream);
+
+                    //long ts = System.currentTimeMillis();
+                    //logger.info(ts + " - MapTileDownloader Write file from URL: ["+tileURLString+"]");
 					byteStream.reset();
 				}
 				final Drawable result = tileSource.getDrawable(byteStream);

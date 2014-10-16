@@ -11,6 +11,9 @@ import org.osmdroid.tileprovider.tilesource.TileSourceFactory;
 import org.osmdroid.tileprovider.util.SimpleRegisterReceiver;
 import org.osmdroid.tileprovider.modules.MapTileModuleProviderBase;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import android.content.Context;
 import android.graphics.drawable.Drawable;
 
@@ -24,7 +27,7 @@ import android.graphics.drawable.Drawable;
  */
 public class BetterTileProvider extends BetterMapTileProviderArray implements IMapTileProviderCallback {
 
-    // private static final Logger logger = LoggerFactory.getLogger(MapTileProviderBasic.class);
+    private static final Logger logger = LoggerFactory.getLogger(BetterTileProvider.class);
 
     /**
      * Creates a {@link MapTileProviderBasic}.
