@@ -57,10 +57,6 @@ public class MapTile {
 
 	@Override
 	public int hashCode() {
-		int code = 17;
-		code *= 37 + zoomLevel;
-		code *= 37 + x;
-		code *= 37 + y;
-		return code;
+        return toString().hashCode();
 	}
 }
