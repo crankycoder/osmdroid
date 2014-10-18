@@ -2,11 +2,12 @@ package org.osmdroid.tileprovider.tilesource;
 
 import org.osmdroid.ResourceProxy.string;
 import org.osmdroid.tileprovider.MapTile;
+import org.osmdroid.tileprovider.tilesource.ITileSource;
 
 /**
  * An implementation of {@link org.osmdroid.tileprovider.tilesource.OnlineTileSourceBase}
  */
-public class XYTileSource extends OnlineTileSourceBase {
+public class XYTileSource extends OnlineTileSourceBase implements ITileSource {
 
 	public XYTileSource(final String aName, final string aResourceId, final int aZoomMinLevel,
 			final int aZoomMaxLevel, final int aTileSizePixels, final String aImageFilenameEnding,

@@ -126,12 +126,13 @@ public class TileWriter implements IFilesystemCache, OpenStreetMapTileProviderCo
             }
         }
 
-        file = new File(TILE_PATH_BASE, pTileSource.getTileRelativeFilenameString(pTile)
-                + TILE_PATH_EXTENSION);
+        file = new File(TILE_PATH_BASE, 
+                    pTileSource.getTileRelativeFilenameString(pTile) + TILE_PATH_EXTENSION);
 
         parent = file.getParentFile();
 
         if (!parent.exists() && !createFolderAndCheckIfExists(parent)) {
+            log("Can't create parent folder for actual PNG. parent ["+parent+"]");
             return false;
         }
 
@@ -142,12 +143,14 @@ public class TileWriter implements IFilesystemCache, OpenStreetMapTileProviderCo
             final long length = StreamUtils.copy(pStream, outputStream);
             outputStream.flush();
             outputStream.close();
+            log("Wrote final tile: ["+file.getPath()+"]");
 
             mUsedCacheSpace += length;
             if (mUsedCacheSpace > TILE_MAX_CACHE_SIZE_BYTES) {
                 cutCurrentCache(); // TODO perhaps we should do this in the background
             }
         } catch (final IOException e) {
+            logger.error("TileWriter: IOException while writing tile: ", e);
             return false;
         } finally {
             if (outputStream != null) {
@@ -281,6 +284,9 @@ public class TileWriter implements IFilesystemCache, OpenStreetMapTileProviderCo
                 logger.info("Finished trimming tile cache");
             }
         }
+    }
+    private void log(String msg) {
+        logger.info("TileWriter: " + msg);
     }
 
 }
