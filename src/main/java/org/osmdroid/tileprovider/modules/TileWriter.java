@@ -119,6 +119,7 @@ public class TileWriter implements IFilesystemCache, OpenStreetMapTileProviderCo
                 outputStream = new BufferedOutputStream(fos);
                 outputStream.write(etag.getBytes(Charset.forName("UTF-8")));
                 outputStream.flush();
+                outputStream.close();
                 logger.info("Wrote ["+ etag +"] file at: ["+etagFile.getPath()+"]");
             } catch (IOException ioEx) {
                 logger.error("Failed to create etag file: ["+etagFile.getPath()+"]", ioEx);
@@ -139,6 +140,8 @@ public class TileWriter implements IFilesystemCache, OpenStreetMapTileProviderCo
             outputStream = new BufferedOutputStream(new FileOutputStream(file.getPath()),
                     StreamUtils.IO_BUFFER_SIZE);
             final long length = StreamUtils.copy(pStream, outputStream);
+            outputStream.flush();
+            outputStream.close();
 
             mUsedCacheSpace += length;
             if (mUsedCacheSpace > TILE_MAX_CACHE_SIZE_BYTES) {
