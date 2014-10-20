@@ -1,8 +1,12 @@
 package org.osmdroid.tileprovider.modules;
 
-import java.io.BufferedOutputStream;
 import java.io.File;
+
+import java.io.FileInputStream;
+import java.io.BufferedInputStream;
 import java.io.FileOutputStream;
+import java.io.BufferedOutputStream;
+
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.Charset;
@@ -29,6 +33,12 @@ import org.slf4j.LoggerFactory;
 // @TODO: vng IFilesystemCache is only implemented by this one class.
 // We should just tighten up the public interface of TileWriter and
 // drop IFilesystemCache entirely
+//
+// This is also not a cache at all. It's the only place in osmdroid
+// which does any IO to storage.
+//
+// The classs has also been extended to do read/write of Etags, so
+// it's not even just a Writer anymore.
 public class TileWriter implements IFilesystemCache, OpenStreetMapTileProviderConstants {
 
     // ===========================================================
@@ -91,6 +101,43 @@ public class TileWriter implements IFilesystemCache, OpenStreetMapTileProviderCo
     // ===========================================================
     // Methods from SuperClass/Interfaces
     // ===========================================================
+
+    public String readEtag(final ITileSource pTileSource, final MapTile pTile) {
+        File file;
+        File etagFile;
+        BufferedInputStream inputStream;
+
+        String tileFilename = pTileSource.getTileRelativeFilenameString(pTile);
+        etagFile = new File(TILE_PATH_BASE,
+                tileFilename + ".etag");
+
+        FileInputStream fis = null;
+        try {
+            fis = new FileInputStream(etagFile.getPath());
+            inputStream = new BufferedInputStream(fis);
+            byte[] contents = new byte[1024];
+
+            int bytesRead=0;
+            String strFileContents = ""; 
+            while((bytesRead = inputStream.read(contents)) != -1){ 
+                strFileContents = new String(contents, 0, bytesRead);
+            }
+            return strFileContents;
+        } catch (IOException ioEx) {
+            logger.error("Failed to read etag file: ["+etagFile.getPath()+"]", ioEx);
+        } finally {
+            try {
+                if (fis != null) {
+                    fis.close();
+                }
+            } catch (IOException ioEx) {
+                logger.error("osmdroid: error closing etag inputstream", ioEx);
+            }
+        }
+        logger.error("osmdroid: error loading etag");
+        return null;
+    }
+
 
     @Override
     public boolean saveFile(final ITileSource pTileSource, final MapTile pTile,

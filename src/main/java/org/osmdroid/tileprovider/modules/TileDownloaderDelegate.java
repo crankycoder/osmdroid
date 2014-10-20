@@ -10,11 +10,13 @@ import java.util.Collections;
 import java.util.Map;
 
 import org.apache.http.Header;
+import org.apache.http.params.CoreProtocolPNames;
 import org.apache.http.HttpEntity;
 import org.apache.http.HttpResponse;
 import org.apache.http.client.HttpClient;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.client.methods.HttpUriRequest;
+import org.apache.http.conn.HttpHostConnectException;
 
 import org.osmdroid.http.HttpClientFactory;
 import org.osmdroid.tileprovider.MapTile;
@@ -35,6 +37,8 @@ import org.slf4j.LoggerFactory;
  */
 public class TileDownloaderDelegate {
 
+    public static final String ETAG_MATCH_HEADER = "If-None-Match";
+
     public static final int ONE_HOUR_MS = 1000*60*60;
 
     private static final Logger logger = LoggerFactory.getLogger(TileDownloaderDelegate.class);
@@ -53,6 +57,66 @@ public class TileDownloaderDelegate {
     }
 
     /*
+     * Check if the tile is current by running a conditional get on
+     * the URL
+     */
+    public boolean isTileCurrent(ITileSource tileSource, MapTile tile) throws HttpHostConnectException {
+        if (tileSource == null) {
+            log("tileSource is null");
+            return false;
+        }
+
+        if (networkIsUnavailable()) {
+            return false;
+        }
+
+        final String tileURLString = tileSource.getTileURLString(tile);
+
+        if (tileURLString == null || tileURLString.length() == 0) {
+            log("No tile URL for ["+tile+"]");
+            return false;
+        }
+
+        if (urlIs404Cached(tileURLString)) {
+            // Note that this behaviour is different than
+            // actually downloading a tile.  If the URL is 404 cached,
+            // we just assume that the tile is 'current'
+            return true;
+        }
+
+        try {
+            String etag = tileWriter.readEtag(tileSource, tile);
+            if (etag == null) {
+                // No etags mean we want to download the file, no need
+                // to go checking the etag status over the network.
+                log("No etag found, forcing download ["+tileURLString+"]");
+                return false;
+            }
+
+            final HttpClient client = HttpClientFactory.createHttpClient();
+            final HttpGet httpGet = new HttpGet(tileURLString);
+            httpGet.setHeader(CoreProtocolPNames.USER_AGENT, "osmdroid");
+            httpGet.setHeader(ETAG_MATCH_HEADER, etag);
+            final HttpResponse response = client.execute(httpGet);
+
+            // Check to see if we got success
+            final org.apache.http.StatusLine statusLine = response.getStatusLine();
+            if (statusLine.getStatusCode() == 304) {
+                log("Etag is already current ["+tileURLString+"]");
+                return true;
+            } else {
+                log("Etag is not current - actual status line: ["+statusLine+"]");
+            }
+        } catch (HttpHostConnectException hostEx) {
+            throw hostEx;
+        } catch (IOException ioEx) {
+            logger.error("IOException loading tile from network", ioEx);
+            log("IOException loading tile from network:" + ioEx.toString());
+        }
+
+        log("Etag was not current ["+tileURLString+"]");
+        return false;
+    }
      * Write a tile from network to disk.
      */
     public boolean writeTileToDisk(ITileSource tileSource, MapTile tile) {
