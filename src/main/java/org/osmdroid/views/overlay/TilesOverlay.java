@@ -318,6 +318,9 @@ public class TilesOverlay extends Overlay implements IOverlayMenuProvider {
 		}
 	}
 
+    // @TODO vng - this can be refactored and pushed down into the
+    // TileProvider.  All the details about the tile size are already
+    // in the tileprovider anyway.
 	private Drawable getLoadingTile() {
 		if (mLoadingTile == null && mLoadingBackgroundColor != Color.TRANSPARENT) {
 			try {
@@ -337,6 +340,7 @@ public class TilesOverlay extends Overlay implements IOverlayMenuProvider {
 				}
 				mLoadingTile = new BitmapDrawable(bitmap);
 			} catch (final OutOfMemoryError e) {
+                // OOM is 'normal' for bitmap operations on Android
 				logger.error("OutOfMemoryError getting loading tile");
 				System.gc();
 			}
