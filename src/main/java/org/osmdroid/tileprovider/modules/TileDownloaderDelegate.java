@@ -117,9 +117,11 @@ public class TileDownloaderDelegate {
         log("Etag was not current ["+tileURLString+"]");
         return false;
     }
+
+    /*
      * Write a tile from network to disk.
      */
-    public boolean writeTileToDisk(ITileSource tileSource, MapTile tile) {
+    public boolean downloadTile(ITileSource tileSource, MapTile tile) throws HttpHostConnectException {
         if (tileSource == null) {
             log("tileSource is null");
             return false;
@@ -139,13 +141,17 @@ public class TileDownloaderDelegate {
         if (urlIs404Cached(tileURLString)) {
             return false;
         }
-        // Always try remove the tileURL from the cache
+
+        // Always try remove the tileURL from the cache before we try
+        // downloading again.
         HTTP404_CACHE.remove(tileURLString);
 
         try {
             final HttpClient client = HttpClientFactory.createHttpClient();
-            final HttpResponse response = client.execute(new HttpGet(tileURLString));
-            log("GET "+ tileURLString);
+            log("Pre: GET "+ tileURLString);
+            HttpGet httpGet = new HttpGet(tileURLString);
+            httpGet.setHeader(CoreProtocolPNames.USER_AGENT, "osmdroid");
+            final HttpResponse response = client.execute(httpGet);
 
             // Check to see if we got success
             final org.apache.http.StatusLine statusLine = response.getStatusLine();
@@ -165,12 +171,33 @@ public class TileDownloaderDelegate {
                 return false;
             }
 
-            final InputStream in = entity.getContent();
-            final ByteArrayOutputStream dataStream = new ByteArrayOutputStream();
-            final OutputStream out = new BufferedOutputStream(dataStream, StreamUtils.IO_BUFFER_SIZE);
+            InputStream in = null;
+            ByteArrayOutputStream dataStream = null;
+            OutputStream out = null;
 
-            StreamUtils.copy(in, out);
-            out.flush();
+            try {
+                in = entity.getContent();
+                dataStream = new ByteArrayOutputStream();
+                out = new BufferedOutputStream(dataStream, StreamUtils.IO_BUFFER_SIZE);
+                StreamUtils.copy(in, out);
+                out.flush();
+            } finally {
+                if (out != null) {
+                    try {
+                        out.close();
+                    } catch (IOException ioEx) {
+                        logger.error("Error closing tile output stream.", ioEx);
+                    }
+                }
+                if (in != null) {
+                    try {
+                        in.close();
+                    } catch (IOException ioEx) {
+                        logger.error("Error closing tile output stream.", ioEx);
+                    }
+                }
+            }
+
             final byte[] data = dataStream.toByteArray();
             final ByteArrayInputStream byteStream = new ByteArrayInputStream(data);
             Header etagHeader = response.getFirstHeader("etag");
@@ -186,6 +213,8 @@ public class TileDownloaderDelegate {
             tileWriter.saveFile(tileSource, tile, byteStream, etag);
             return true;
 
+        } catch (HttpHostConnectException hostEx) {
+            throw hostEx;
         } catch (IOException ioEx) {
             logger.error("IOException loading tile from network", ioEx);
         }

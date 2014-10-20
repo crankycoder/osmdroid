@@ -2,6 +2,7 @@ package org.osmdroid.tileprovider.modules;
 
 import java.io.File;
 import java.util.concurrent.atomic.AtomicReference;
+import java.io.IOException;
 
 import org.osmdroid.tileprovider.modules.TileDownloaderDelegate;
 import org.osmdroid.tileprovider.ExpirableBitmapDrawable;
@@ -154,53 +155,62 @@ public class SmartFSProvider extends MapTileFileStorageProviderBase {
 
             final Drawable drawable; 
             if (file.exists()) {
-                log("tile exists");
+                boolean tileIsCurrent = false;
                 try {
-                    drawable = tileSource.getDrawable(file.getPath());
-                    // @TODO: do a conditional GET to see if we need to
-                    // refresh this content - do the refresh in the
-                    // background so that we don't block the rendering
-                    // pipeline
-                    log("returning working tile");
-                    return drawable;
-                } catch (final LowMemoryException e) {
-                    // low memory so empty the queue
-                    logger.warn("LowMemoryException downloading MapTile: " + tile + " : " + e);
-                    throw new CantContinueException(e);
-                }
-            } else {
-                // call the delegate and load a tile from the network
-                // @TODO: put this in the background using a
-                // workerpool and a concurrent queue to push tile
-                // objects without blocking
-                if (delegate == null) {
-                    log("delegate is null");
+                    tileIsCurrent = delegate.isTileCurrent(tileSource, tile);
+                } catch (IOException ioEx) {
+                    log("Error fetching etag status of file");
+                    logger.error("Error checking etag status", ioEx);
                     return null;
                 }
-                log("Fetching from network");
-                boolean writeOK = delegate.writeTileToDisk(tileSource, tile);
-                file = new File(TILE_PATH_BASE, tileSource.getTileRelativeFilenameString(tile) + TILE_PATH_EXTENSION);
 
-                if (file.exists()) {
-                    log("New file from network!");
+                if (tileIsCurrent) {
+                    // Use the ondisk tile
                     try {
                         drawable = tileSource.getDrawable(file.getPath());
-                        log("returning working tile!");
+                        log("returning working tile");
                         return drawable;
                     } catch (final LowMemoryException e) {
                         // low memory so empty the queue
                         logger.warn("LowMemoryException downloading MapTile: " + tile + " : " + e);
                         throw new CantContinueException(e);
                     }
-                } else {
-                    if (writeOK) {
-                        log("!!!!! writeOK but can't read: ["+file.getPath()+"]");
-                    } else {
-                        log("!!!!! Failure to write to disk!");
-                    }
                 }
             }
 
+            // call the delegate and load a tile from the network
+            if (delegate == null) {
+                log("delegate is null");
+                return null;
+            }
+
+            boolean writeOK = false;
+            try {
+                writeOK = delegate.downloadTile(tileSource, tile);
+            } catch (IOException ioEx) {
+                log("Error fetching tile from map server");
+                logger.error("Error fetching tile from map server", ioEx);
+                return null;
+            }
+            // @TODO: the writeOK flag isn't always correct - just
+            // ignore it for now and test for file existence. The tile
+            // will get updated anyway on the next redraw using
+            // conditional get
+
+            file = new File(TILE_PATH_BASE, tileSource.getTileRelativeFilenameString(tile) + TILE_PATH_EXTENSION);
+            if (file.exists()) {
+                try {
+                    drawable = tileSource.getDrawable(file.getPath());
+                    log("returning working tile!");
+                    return drawable;
+                } catch (final LowMemoryException e) {
+                    // low memory so empty the queue
+                    logger.warn("LowMemoryException downloading MapTile: " + tile + " : " + e);
+                    throw new CantContinueException(e);
+                }
+            }
+
+            log("Error loading tile writeOK: ["+writeOK+"] File Status: ["+file.exists()+"]");
             // If we get here then there is no file in the file cache
             return null;
         }
